@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, CheckSquare, BrainCircuit, History, LayoutDashboard, Settings, Coffee } from 'lucide-react';
+import { Plus, Search, CheckSquare, BrainCircuit, History, LayoutDashboard, Settings, Coffee, List } from 'lucide-react';
 import { Problem, UserStats } from './types';
 import { SRS_INTERVALS, XP_REWARDS } from './constants';
 import * as Storage from './services/storageService';
@@ -10,6 +11,7 @@ import LandingPage from './components/LandingPage';
 import ActivityGraph from './components/ActivityGraph';
 import Achievements from './components/Achievements';
 import SettingsModal from './components/SettingsModal';
+import RoadmapModal from './components/RoadmapModal';
 
 const QUOTES = [
     "Consistency is the mother of mastery.",
@@ -28,6 +30,7 @@ export default function App() {
   const [stats, setStats] = useState<UserStats>(Storage.getStats());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
   const [editingProblem, setEditingProblem] = useState<Problem | null>(null);
   const [view, setView] = useState<'dashboard' | 'history'>('dashboard');
   const [filter, setFilter] = useState<'due' | 'all'>('due');
@@ -57,13 +60,11 @@ export default function App() {
     const today = new Date().toDateString();
     let count = 0;
     problems.forEach(p => {
-        p.history.forEach(h => {
+        p.history.forEach((h, index) => {
             // Check if log is from today
             if (new Date(h.date).toDateString() === today) {
-                // CRITICAL FIX: Do not count the initial creation log as a "Review"
-                // We compare the timestamp of the log with the problem's creation timestamp.
-                // If they are identical, it's the creation event, not a spaced repetition review.
-                if (h.date !== p.createdAt) {
+                // Ignore the very first log entry (index 0) as it is the "Creation/Solved" log.
+                if (index > 0) {
                     count++;
                 }
             }
@@ -117,9 +118,6 @@ export default function App() {
     
     if (filter === 'due') {
         // Apply Daily Limit
-        // Only show up to the remaining quota
-        // If user searches, we might show items outside the top quota, which is fine for UX, 
-        // but generally we want to cap the view.
         if (!searchQuery) {
             return baseList.slice(0, remainingDailyQuota);
         }
@@ -138,6 +136,13 @@ export default function App() {
     
     if (editingProblem) {
         // Edit Mode
+        
+        // If we update the creation date, we should also update the first history entry
+        const updatedHistory = [...editingProblem.history];
+        if (updatedHistory.length > 0) {
+            updatedHistory[0] = { ...updatedHistory[0], date: dateTimestamp };
+        }
+
         const updatedProblem: Problem = {
             ...editingProblem,
             title: data.title,
@@ -145,9 +150,8 @@ export default function App() {
             tags: data.tags,
             link: data.link,
             notes: data.notes,
-            // Only update createdAt if you want to shift the "start date". 
-            // Usually we keep original createdAt, but if the user is fixing a mistake, we update.
-            createdAt: dateTimestamp, 
+            createdAt: dateTimestamp,
+            history: updatedHistory
         };
 
         const updatedProblems = problems.map(p => p.id === editingProblem.id ? updatedProblem : p);
@@ -253,6 +257,8 @@ export default function App() {
     return <LandingPage onEnter={() => setShowLanding(false)} />;
   }
 
+  const existingTitles = new Set(problems.map(p => p.title));
+
   return (
     <div className="min-h-screen pb-20 font-sans bg-black text-zinc-100">
       {/* Navbar */}
@@ -293,13 +299,26 @@ export default function App() {
                 </button>
               </div>
 
-              <button 
-                onClick={openNewModal}
-                className="bg-white text-black hover:bg-zinc-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors ml-2"
-              >
-                <Plus size={16} />
-                <span className="hidden sm:inline">Log Solve</span>
-              </button>
+              <div className="flex gap-2 ml-2">
+                 {/* Roadmap Button */}
+                <button 
+                    onClick={() => setIsRoadmapOpen(true)}
+                    className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 md:px-3 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors border border-zinc-700"
+                    title="NeetCode 150 Roadmap"
+                >
+                    <List size={18} />
+                    <span className="hidden sm:inline">Roadmap</span>
+                </button>
+
+                {/* Log Solve Button */}
+                <button 
+                    onClick={openNewModal}
+                    className="bg-white text-black hover:bg-zinc-200 p-2 md:px-4 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors"
+                >
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">Log Solve</span>
+                </button>
+              </div>
           </div>
         </div>
       </nav>
@@ -487,6 +506,13 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onDataImported={loadData}
+      />
+
+      <RoadmapModal
+        isOpen={isRoadmapOpen}
+        onClose={() => setIsRoadmapOpen(false)}
+        onAdd={handleSaveProblem}
+        existingTitles={existingTitles}
       />
     </div>
   );
