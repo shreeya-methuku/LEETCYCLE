@@ -58,8 +58,14 @@ export default function App() {
     let count = 0;
     problems.forEach(p => {
         p.history.forEach(h => {
+            // Check if log is from today
             if (new Date(h.date).toDateString() === today) {
-                count++;
+                // CRITICAL FIX: Do not count the initial creation log as a "Review"
+                // We compare the timestamp of the log with the problem's creation timestamp.
+                // If they are identical, it's the creation event, not a spaced repetition review.
+                if (h.date !== p.createdAt) {
+                    count++;
+                }
             }
         });
     });
@@ -139,6 +145,8 @@ export default function App() {
             tags: data.tags,
             link: data.link,
             notes: data.notes,
+            // Only update createdAt if you want to shift the "start date". 
+            // Usually we keep original createdAt, but if the user is fixing a mistake, we update.
             createdAt: dateTimestamp, 
         };
 
@@ -405,12 +413,22 @@ export default function App() {
                                     <div className="bg-zinc-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
                                         <CheckSquare className="text-zinc-700" size={32} />
                                     </div>
-                                    <h3 className="text-lg font-medium text-white mb-1">Zero state.</h3>
-                                    <p className="text-zinc-600 text-sm max-w-xs mx-auto">
+                                    <h3 className="text-lg font-medium text-white mb-1">
+                                        {filter === 'due' ? "Nothing due right now." : "Zero state."}
+                                    </h3>
+                                    <p className="text-zinc-600 text-sm max-w-xs mx-auto mt-2">
                                         {filter === 'due' 
-                                        ? "Nothing due right now." 
+                                        ? "Problems you log today will appear here starting tomorrow." 
                                         : "Start logging your journey."}
                                     </p>
+                                    {filter === 'due' && (
+                                         <button 
+                                            onClick={() => setFilter('all')}
+                                            className="mt-4 text-xs text-zinc-500 hover:text-zinc-300 underline"
+                                        >
+                                            View your logs in "All Problems"
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>
