@@ -1,0 +1,5 @@
+{
+  "name": "LeetCycle - Spaced Repetition",
+  "description": "A gamified spaced repetition system for mastering LeetCode problems. Log your daily solves manually and never forget a pattern again.",
+  "requestFramePermissions": []
+}
