@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, CheckSquare, BrainCircuit, History, LayoutDashboard, Settings } from 'lucide-react';
+import { Plus, Search, CheckSquare, BrainCircuit, History, LayoutDashboard, Settings, Coffee } from 'lucide-react';
 import { Problem, UserStats } from './types';
 import { SRS_INTERVALS, XP_REWARDS } from './constants';
 import * as Storage from './services/storageService';
@@ -52,9 +52,33 @@ export default function App() {
     Storage.saveStats(updatedStats);
   };
 
+  // Calculate reviews done today
+  const reviewsToday = useMemo(() => {
+    const today = new Date().toDateString();
+    let count = 0;
+    problems.forEach(p => {
+        p.history.forEach(h => {
+            if (new Date(h.date).toDateString() === today) {
+                count++;
+            }
+        });
+    });
+    return count;
+  }, [problems]);
+
+  const dailyLimit = stats.dailyLimit || 2;
+  const remainingDailyQuota = Math.max(0, dailyLimit - reviewsToday);
+
   // Compute problems due today
   const dueProblems = useMemo(() => {
-    return problems.filter(p => p.nextReview <= new Date().getTime()); 
+    // Basic due filter
+    const due = problems.filter(p => p.nextReview <= new Date().getTime());
+    
+    // Sort by Priority: Lower level (less mastery) comes first. Then by overdue time.
+    return due.sort((a, b) => {
+        if (a.level !== b.level) return a.level - b.level;
+        return a.nextReview - b.nextReview;
+    });
   }, [problems]);
 
   // History Log List
@@ -85,14 +109,25 @@ export default function App() {
       );
     }
     
-    // Sort: Due first, then by last reviewed
-    return baseList.sort((a, b) => a.nextReview - b.nextReview);
-  }, [filter, dueProblems, problems, searchQuery]);
+    if (filter === 'due') {
+        // Apply Daily Limit
+        // Only show up to the remaining quota
+        // If user searches, we might show items outside the top quota, which is fine for UX, 
+        // but generally we want to cap the view.
+        if (!searchQuery) {
+            return baseList.slice(0, remainingDailyQuota);
+        }
+    } else {
+        // All problems view: Sort by Next Review
+        return baseList.sort((a, b) => a.nextReview - b.nextReview);
+    }
+
+    return baseList;
+  }, [filter, dueProblems, problems, searchQuery, remainingDailyQuota]);
 
   // Handler: Save Problem (Add or Edit)
   const handleSaveProblem = (data: any) => {
-    // Determine timestamp from selected date (defaults to 00:00 UTC of that day)
-    // We append noon time to ensure it stays on the selected day regardless of timezone shifts when displayed
+    // Determine timestamp from selected date
     const dateTimestamp = new Date(data.date).getTime();
     
     if (editingProblem) {
@@ -104,10 +139,7 @@ export default function App() {
             tags: data.tags,
             link: data.link,
             notes: data.notes,
-            // Allow updating creation date if user wants to backdate/fix entry
             createdAt: dateTimestamp, 
-            // Also update the initial history entry if it matches the old creation date?
-            // For simplicity, we just update creation date.
         };
 
         const updatedProblems = problems.map(p => p.id === editingProblem.id ? updatedProblem : p);
@@ -124,7 +156,7 @@ export default function App() {
             link: data.link,
             createdAt: dateTimestamp,
             lastReviewed: dateTimestamp,
-            nextReview: dateTimestamp + (SRS_INTERVALS[0] * 24 * 60 * 60 * 1000), // Default 1 day after solved date
+            nextReview: dateTimestamp + (SRS_INTERVALS[0] * 24 * 60 * 60 * 1000), 
             level: 0,
             notes: data.notes || '',
             history: [{ date: dateTimestamp, rating: 'easy', problemTitle: data.title }]
@@ -325,18 +357,62 @@ export default function App() {
                     </div>
                     </div>
 
+                    {/* Progress Bar for Daily Limit */}
+                    {filter === 'due' && (
+                        <div className="mb-6 flex flex-col gap-2">
+                            <div className="flex justify-between text-xs text-zinc-400 uppercase font-bold tracking-wider">
+                                <span>Daily Goal</span>
+                                <span>{reviewsToday} / {dailyLimit} Revised</span>
+                            </div>
+                            <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                                <div 
+                                    className={`h-full transition-all duration-500 ${reviewsToday >= dailyLimit ? 'bg-emerald-500' : 'bg-purple-500'}`}
+                                    style={{ width: `${Math.min(100, (reviewsToday / dailyLimit) * 100)}%` }}
+                                ></div>
+                            </div>
+                            {remainingDailyQuota === 0 && dueProblems.length > 0 && (
+                                <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                                    <CheckSquare size={12} />
+                                    Daily goal reached! {dueProblems.length} more problems are in the backlog.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     <div className="space-y-4">
                     {displayProblems.length === 0 ? (
                         <div className="text-center py-20 bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-900">
-                        <div className="bg-zinc-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
-                            <CheckSquare className="text-zinc-700" size={32} />
-                        </div>
-                        <h3 className="text-lg font-medium text-white mb-1">Zero state.</h3>
-                        <p className="text-zinc-600 text-sm max-w-xs mx-auto">
-                            {filter === 'due' 
-                            ? "Nothing due right now." 
-                            : "Start logging your journey."}
-                        </p>
+                            {filter === 'due' && remainingDailyQuota === 0 && reviewsToday >= dailyLimit ? (
+                                <>
+                                    <div className="bg-zinc-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
+                                        <Coffee className="text-emerald-500" size={32} />
+                                    </div>
+                                    <h3 className="text-lg font-medium text-white mb-1">You're done for today!</h3>
+                                    <p className="text-zinc-600 text-sm max-w-xs mx-auto">
+                                        Great work. You've hit your daily limit of {dailyLimit} problems. Come back tomorrow!
+                                    </p>
+                                    {dueProblems.length > 0 && (
+                                        <button 
+                                            onClick={() => setFilter('all')}
+                                            className="mt-4 text-xs text-zinc-500 hover:text-zinc-300 underline"
+                                        >
+                                            View {dueProblems.length} backlog items in All Problems
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <div className="bg-zinc-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
+                                        <CheckSquare className="text-zinc-700" size={32} />
+                                    </div>
+                                    <h3 className="text-lg font-medium text-white mb-1">Zero state.</h3>
+                                    <p className="text-zinc-600 text-sm max-w-xs mx-auto">
+                                        {filter === 'due' 
+                                        ? "Nothing due right now." 
+                                        : "Start logging your journey."}
+                                    </p>
+                                </>
+                            )}
                         </div>
                     ) : (
                         displayProblems.map(problem => (

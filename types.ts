@@ -1,3 +1,4 @@
+
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 
 export interface ReviewLog {
@@ -28,6 +29,7 @@ export interface UserStats {
   totalSolved: number;
   totalReviewed: number;
   level: number;
+  dailyLimit: number; // New field for daily cap
 }
 
 export interface Achievement {

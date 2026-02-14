@@ -30,9 +30,15 @@ export const getStats = (): UserStats => {
       totalSolved: 0,
       totalReviewed: 0,
       level: 1,
+      dailyLimit: 2, // Default to 2
     };
   }
-  return JSON.parse(stored);
+  const parsed = JSON.parse(stored);
+  // Migration for existing users who don't have dailyLimit yet
+  if (parsed.dailyLimit === undefined) {
+      parsed.dailyLimit = 2;
+  }
+  return parsed;
 };
 
 export const saveStats = (stats: UserStats) => {
